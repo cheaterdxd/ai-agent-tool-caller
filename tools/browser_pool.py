@@ -10,6 +10,47 @@ from langchain_ollama import ChatOllama
 logger = logging.getLogger(__name__)
 
 
+class OllamaLLMWrapper:
+    """Wrapper for ChatOllama to provide browser_use compatible interface."""
+    
+    def __init__(self, model: str, temperature: float = 0.1):
+        self._llm = ChatOllama(model=model, temperature=temperature)
+        self.model = model
+        self._provider = "ollama"
+    
+    @property
+    def provider(self) -> str:
+        return self._provider
+    
+    @property
+    def name(self) -> str:
+        return f"ollama/{self.model}"
+    
+    @property
+    def model_name(self) -> str:
+        return self.model
+    
+    async def ainvoke(self, messages, output_format=None, **kwargs):
+        """Invoke the LLM with messages."""
+        from browser_use.llm import UserMessage, AssistantMessage, SystemMessage
+        
+        # Convert browser_use messages to LangChain format
+        lc_messages = []
+        for msg in messages:
+            if isinstance(msg, SystemMessage):
+                lc_messages.append({"role": "system", "content": msg.content})
+            elif isinstance(msg, UserMessage):
+                lc_messages.append({"role": "user", "content": msg.content})
+            elif isinstance(msg, AssistantMessage):
+                lc_messages.append({"role": "assistant", "content": msg.content})
+        
+        # Call the underlying LLM
+        response = await self._llm.ainvoke(lc_messages)
+        
+        # Return in browser_use format
+        return type('ChatInvokeCompletion', (), {'content': response.content})()
+
+
 class BrowserPool:
     """Manage multiple browser instances with rate limiting."""
     
@@ -99,7 +140,6 @@ class BrowserPool:
             try:
                 # Use browser_use Agent to perform search
                 from browser_use import Agent
-                from langchain_ollama import ChatOllama
                 
                 task = f"""Search Google for "{query}" and extract information about the top 5 results.
                 For each result, provide:
@@ -109,7 +149,8 @@ class BrowserPool:
                 
                 Return the results in a structured format."""
                 
-                llm = ChatOllama(model=self.ollama_model, temperature=0.1)
+                # Use wrapped LLM that provides browser_use compatible interface
+                llm = OllamaLLMWrapper(model=self.ollama_model, temperature=0.1)
                 agent = Agent(task=task, llm=llm, browser=browser)
                 
                 # Run the agent
