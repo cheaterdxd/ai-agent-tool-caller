@@ -4,7 +4,8 @@ import asyncio
 import logging
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timedelta
-from browser_use import Browser
+from browser_use import Browser, Agent
+from langchain_ollama import ChatOllama
 
 logger = logging.getLogger(__name__)
 
@@ -96,36 +97,26 @@ class BrowserPool:
             browser = self.browsers[browser_idx]
             
             try:
-                # Navigate to Google and search
-                search_url = f"https://www.google.com/search?q={query.replace(' ', '+')}"
-                await browser.goto(search_url)
-                await browser.wait_for_load_state('networkidle')
+                # Use browser_use Agent to perform search
+                from browser_use import Agent
+                from langchain_ollama import ChatOllama
                 
-                # Extract search results
-                results = await browser.query_selector_all('div.g')
-                articles = []
+                task = f"""Search Google for "{query}" and extract information about the top 5 results.
+                For each result, provide:
+                1. Title of the page
+                2. URL 
+                3. Brief description/snippet
                 
-                for result in results[:5]:  # Top 5 results
-                    try:
-                        title_elem = await result.query_selector('h3')
-                        title = await title_elem.inner_text() if title_elem else 'No title'
-                        
-                        link_elem = await result.query_selector('a')
-                        url = await link_elem.get_attribute('href') if link_elem else ''
-                        
-                        desc_elem = await result.query_selector('div.VwiC3b')
-                        description = await desc_elem.inner_text() if desc_elem else ''
-                        
-                        articles.append({
-                            'title': title,
-                            'url': url,
-                            'description': description,
-                            'source_query': query,
-                            'retrieved_at': datetime.now().isoformat()
-                        })
-                    except Exception as e:
-                        logger.error(f"Error parsing result: {e}")
-                        continue
+                Return the results in a structured format."""
+                
+                llm = ChatOllama(model=self.ollama_model, temperature=0.1)
+                agent = Agent(task=task, llm=llm, browser=browser)
+                
+                # Run the agent
+                result = await agent.run()
+                
+                # Parse results from agent output
+                articles = self._parse_search_results(result, query)
                 
                 logger.info(f"Search completed: found {len(articles)} articles for '{query}'")
                 return articles

@@ -234,7 +234,10 @@ class AgentDaemon:
                     result_text += f"   {r.get('url', 'No URL')}\n\n"
                 
                 # Send result as reply to status message
-                await status_message.reply(result_text)
+                if status_message:
+                    await status_message.reply(result_text)
+                else:
+                    await original_message.reply(result_text)
                 
                 # Also DM the user
                 await self._notify_user(str(original_message.author_id), f"✅ Search '{query}' complete! Found {len(results)} articles.")
@@ -242,13 +245,23 @@ class AgentDaemon:
             elif action == 'add_note':
                 success = await self.rag.add_document(query)
                 if success:
-                    await status_message.reply(f"✅ Note added to RAG system.\n\n**Content:** {query[:200]}...")
+                    if status_message:
+                        await status_message.reply(f"✅ Note added to RAG system.\n\n**Content:** {query[:200]}...")
+                    else:
+                        await original_message.reply(f"✅ Note added to RAG system.\n\n**Content:** {query[:200]}...")
                 else:
-                    await status_message.reply("❌ Failed to add note to RAG system.")
+                    if status_message:
+                        await status_message.reply("❌ Failed to add note to RAG system.")
+                    else:
+                        await original_message.reply("❌ Failed to add note to RAG system.")
             
         except Exception as e:
             logger.error(f"Error executing long task: {e}")
-            await status_message.reply(f"❌ **Error:** {str(e)}\n\nPlease try again or check logs for details.")
+            error_msg = f"❌ **Error:** {str(e)}\n\nPlease try again or check logs for details."
+            if status_message:
+                await status_message.reply(error_msg)
+            else:
+                await original_message.reply(error_msg)
     
     async def _execute_scheduled_task(
         self,
