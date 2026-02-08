@@ -175,10 +175,12 @@ class AgentDaemon:
         
         if schedule == 'immediate':
             # Send immediate acknowledgment to prevent Discord timeout
-            status_msg = await message.reply(f"⏳ Processing {action} request... (this may take a moment)")
+            await message.reply(f"⏳ Processing {action} request... (this may take a moment)")
             
             # Execute in background to not block Discord
-            asyncio.create_task(self._execute_long_task(action, query, message, status_msg))
+            # Pass user_mention so follow-up messages can mention the user
+            user_mention = f"<@{message.author_id}>"
+            asyncio.create_task(self._execute_long_task(action, query, message, user_mention))
         else:
             # Schedule for later
             try:
@@ -218,26 +220,23 @@ class AgentDaemon:
                 logger.error(f"Error scheduling task: {e}")
                 await message.reply(f"❌ Error scheduling: {str(e)}")
     
-    async def _execute_long_task(self, action: str, query: str, original_message, status_message):
-        """Execute long-running task and update status message with results."""
+    async def _execute_long_task(self, action: str, query: str, original_message, user_mention: str):
+        """Execute long-running task and send results using message.reply()."""
         try:
             if action == 'search':
                 results = await self.search_tool.search(query)
                 await self.rag.add_search_results(results)
                 
                 # Prepare result message
-                result_text = f"✅ **Search Complete for '{query}'**\n\n"
+                result_text = f"{user_mention} ✅ **Search Complete for '{query}'**\n\n"
                 result_text += f"Found {len(results)} articles and added to RAG.\n\n"
                 result_text += "**Top Results:**\n"
                 for i, r in enumerate(results[:5], 1):
                     result_text += f"{i}. **{r.get('title', 'Unknown')}**\n"
                     result_text += f"   {r.get('url', 'No URL')}\n\n"
                 
-                # Send result as reply to status message
-                if status_message:
-                    await status_message.reply(result_text)
-                else:
-                    await original_message.reply(result_text)
+                # Send result using reply (sends to channel, not actual reply reference)
+                await original_message.reply(result_text)
                 
                 # Also DM the user
                 await self._notify_user(str(original_message.author_id), f"✅ Search '{query}' complete! Found {len(results)} articles.")
@@ -245,23 +244,14 @@ class AgentDaemon:
             elif action == 'add_note':
                 success = await self.rag.add_document(query)
                 if success:
-                    if status_message:
-                        await status_message.reply(f"✅ Note added to RAG system.\n\n**Content:** {query[:200]}...")
-                    else:
-                        await original_message.reply(f"✅ Note added to RAG system.\n\n**Content:** {query[:200]}...")
+                    await original_message.reply(f"{user_mention} ✅ Note added to RAG system.\n\n**Content:** {query[:200]}...")
                 else:
-                    if status_message:
-                        await status_message.reply("❌ Failed to add note to RAG system.")
-                    else:
-                        await original_message.reply("❌ Failed to add note to RAG system.")
+                    await original_message.reply(f"{user_mention} ❌ Failed to add note to RAG system.")
             
         except Exception as e:
             logger.error(f"Error executing long task: {e}")
-            error_msg = f"❌ **Error:** {str(e)}\n\nPlease try again or check logs for details."
-            if status_message:
-                await status_message.reply(error_msg)
-            else:
-                await original_message.reply(error_msg)
+            error_msg = f"{user_mention} ❌ **Error:** {str(e)}\n\nPlease try again or check logs for details."
+            await original_message.reply(error_msg)
     
     async def _execute_scheduled_task(
         self,
