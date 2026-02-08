@@ -1,0 +1,44 @@
+# Discord Configuration
+discord:
+  token: "YOUR_DISCORD_BOT_TOKEN_HERE"
+  command_prefix: "!"
+  allowed_channel_ids: []  # Empty = allow all channels
+  max_reconnect_attempts: 5
+  reconnect_base_delay: 1.0
+
+# Ollama Configuration
+ollama:
+  url: "http://localhost:11434"
+  intent_model: "qwen2.5:7b"
+  embedding_model: "nomic-embed-text"
+  temperature: 0.3
+
+# Browser Configuration
+browser:
+  max_instances: 3
+  headless: true
+  rate_limit_delay: 30  # seconds between searches
+  max_searches_per_day: 50
+  timeout: 30  # seconds
+
+# Scheduler Configuration
+scheduler:
+  timezone: "UTC"
+  missed_task_file: "storage/missed_tasks.json"
+
+# RAG Configuration (LEANN)
+lean:
+  index_path: "storage/lean_index"
+  chunk_size: 1000
+  chunk_overlap: 200
+
+# Retention Policy
+retention:
+  task_history_days: 30
+  search_logs_days: 30
+  backup_interval_hours: 24
+
+# Daemon Configuration
+daemon:
+  pid_file: "/tmp/ai-agent.pid"
+  log_level: "INFO"

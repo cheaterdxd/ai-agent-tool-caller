@@ -1,0 +1,6 @@
+[submodule "external/discord-bridge"]
+	path = external/discord-bridge
+	url = https://github.com/cheaterdxd/brigde-module-dicord-chat.git
+[submodule "external/LEANN"]
+	path = external/LEANN
+	url = https://github.com/yichuan-w/LEANN.git

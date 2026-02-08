@@ -1,0 +1,16 @@
+# Core dependencies
+browser-use>=0.1.40
+playwright>=1.40.0
+apscheduler>=3.10.0
+ollama>=0.3.0
+langchain-ollama>=0.2.0
+langgraph>=0.2.0
+pyyaml>=6.0.1
+click>=8.1.0
+python-dotenv>=1.0.0
+
+# Discord bridge (installed from submodule)
+# -e external/discord-bridge
+
+# LEANN (installed from submodule)
+# -e external/LEANN
