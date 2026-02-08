@@ -22,9 +22,9 @@ class LEANNTool:
             # Import LEANN from submodule
             import sys
             sys.path.insert(0, "external/LEANN")
-            from lean import Lean
+            from leann import LeannBuilder
             
-            self.index = Lean(str(self.index_path))
+            self.index = LeannBuilder(str(self.index_path))
             logger.info(f"LEANN index initialized at {self.index_path}")
         except ImportError as e:
             logger.error(f"Failed to import LEANN: {e}")

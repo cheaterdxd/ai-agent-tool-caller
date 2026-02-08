@@ -4,8 +4,7 @@ import asyncio
 import logging
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timedelta
-from browser_use import Agent, Browser, BrowserConfig
-from langchain_ollama import ChatOllama
+from browser_use import Browser
 
 logger = logging.getLogger(__name__)
 
@@ -34,19 +33,13 @@ class BrowserPool:
         self.daily_reset = datetime.now()
         
         self.browsers: List[Browser] = []
-        self.agents: List[Agent] = []
         
     async def initialize(self):
         """Initialize browser instances."""
         logger.info(f"Initializing {self.max_instances} browser instances...")
         for i in range(self.max_instances):
-            browser = Browser(config=BrowserConfig(headless=self.headless))
+            browser = Browser(headless=self.headless)
             self.browsers.append(browser)
-            
-            llm = ChatOllama(model=self.ollama_model, temperature=0.3)
-            agent = Agent(task="", llm=llm, browser=browser)
-            self.agents.append(agent)
-            
             logger.info(f"Browser instance {i+1} initialized")
     
     async def cleanup(self):
@@ -54,11 +47,11 @@ class BrowserPool:
         logger.info("Cleaning up browser instances...")
         for browser in self.browsers:
             try:
-                await browser.close()
+                # BrowserSession doesn't have close(), just stop using it
+                pass
             except Exception as e:
                 logger.error(f"Error closing browser: {e}")
         self.browsers.clear()
-        self.agents.clear()
         logger.info("Browser cleanup complete")
     
     async def _check_daily_limit(self) -> bool:
@@ -103,20 +96,36 @@ class BrowserPool:
             browser = self.browsers[browser_idx]
             
             try:
-                task = f"""Search Google for '{query}' and extract the top 5 results with:
-                - Title
-- URL
-- Brief description
-
-Return results in a structured format."""
+                # Navigate to Google and search
+                search_url = f"https://www.google.com/search?q={query.replace(' ', '+')}"
+                await browser.goto(search_url)
+                await browser.wait_for_load_state('networkidle')
                 
-                llm = ChatOllama(model=self.ollama_model, temperature=0.3)
-                agent = Agent(task=task, llm=llm, browser=browser)
+                # Extract search results
+                results = await browser.query_selector_all('div.g')
+                articles = []
                 
-                result = await agent.run()
-                
-                # Parse results
-                articles = self._parse_search_results(result, query)
+                for result in results[:5]:  # Top 5 results
+                    try:
+                        title_elem = await result.query_selector('h3')
+                        title = await title_elem.inner_text() if title_elem else 'No title'
+                        
+                        link_elem = await result.query_selector('a')
+                        url = await link_elem.get_attribute('href') if link_elem else ''
+                        
+                        desc_elem = await result.query_selector('div.VwiC3b')
+                        description = await desc_elem.inner_text() if desc_elem else ''
+                        
+                        articles.append({
+                            'title': title,
+                            'url': url,
+                            'description': description,
+                            'source_query': query,
+                            'retrieved_at': datetime.now().isoformat()
+                        })
+                    except Exception as e:
+                        logger.error(f"Error parsing result: {e}")
+                        continue
                 
                 logger.info(f"Search completed: found {len(articles)} articles for '{query}'")
                 return articles

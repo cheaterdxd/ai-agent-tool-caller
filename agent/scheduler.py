@@ -34,7 +34,11 @@ class TaskScheduler:
     
     def shutdown(self):
         """Shutdown the scheduler."""
-        self.scheduler.shutdown()
+        try:
+            if self.scheduler.running:
+                self.scheduler.shutdown()
+        except:
+            pass
     
     def schedule_task(
         self,

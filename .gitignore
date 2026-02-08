@@ -28,6 +28,9 @@ wheels/
 # Environment variables
 .env
 
+# Configuration (contains secrets)
+config.yaml
+
 # Storage
 storage/*.db
 storage/*.json

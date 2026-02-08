@@ -48,22 +48,22 @@ class AgentDaemon:
         self.core = AgentCore()
         self.task_manager = TaskManager()
         self.scheduler = TaskScheduler(
-            missed_tasks_file=self.config.get('scheduler', {}).get('missed_task_file', 'storage/missed_tasks.json')
+            missed_tasks_file=self.config.get('scheduler_missed_task_file', 'storage/missed_tasks.json')
         )
         self.parser = IntentParser(
-            model=self.config.get('ollama', {}).get('intent_model', 'qwen2.5:7b'),
-            base_url=self.config.get('ollama', {}).get('url', 'http://localhost:11434')
+            model=self.config.get('ollama_intent_model', 'qwen2.5:7b'),
+            base_url=self.config.get('ollama_url', 'http://localhost:11434')
         )
         self.browser_pool = BrowserPool(
-            max_instances=self.config.get('browser', {}).get('max_instances', 3),
-            rate_limit_delay=self.config.get('browser', {}).get('rate_limit_delay', 30),
-            max_per_day=self.config.get('browser', {}).get('max_searches_per_day', 50),
-            headless=self.config.get('browser', {}).get('headless', True),
-            ollama_model=self.config.get('ollama', {}).get('intent_model', 'qwen2.5:7b')
+            max_instances=self.config.get('browser_max_instances', 3),
+            rate_limit_delay=self.config.get('browser_rate_limit_delay', 30),
+            max_per_day=self.config.get('browser_max_searches_per_day', 50),
+            headless=self.config.get('browser_headless', True),
+            ollama_model=self.config.get('ollama_intent_model', 'qwen2.5:7b')
         )
         self.search_tool = SearchTool(self.browser_pool)
         self.rag = LEANNTool(
-            index_path=self.config.get('lean', {}).get('index_path', 'storage/lean_index')
+            index_path=self.config.get('lean_index_path', 'storage/lean_index')
         )
         
         # Discord bridge
@@ -174,27 +174,11 @@ class AgentDaemon:
         task_name = f"{action}-{query[:20].replace(' ', '-')}-{datetime.now().strftime('%Y%m%d%H%M%S')}"
         
         if schedule == 'immediate':
-            # Execute immediately
-            await message.reply(f"🚀 Executing {action} immediately...")
-            try:
-                if action == 'search':
-                    results = await self.search_tool.search(query)
-                    await self.rag.add_search_results(results)
-                    await message.reply(f"✅ Found {len(results)} articles. Added to RAG.")
-                    await self._notify_user(f"Search complete for '{query}':\n" + 
-                                          "\n".join([f"• {r.get('title', 'Unknown')}" for r in results[:3]]))
-                
-                elif action == 'add_note':
-                    success = await self.rag.add_document(query)
-                    if success:
-                        await message.reply("✅ Note added to RAG system.")
-                    else:
-                        await message.reply("❌ Failed to add note.")
-                
-            except Exception as e:
-                logger.error(f"Error executing task: {e}")
-                await message.reply(f"❌ Error: {str(e)}")
-        
+            # Send immediate acknowledgment to prevent Discord timeout
+            status_msg = await message.reply(f"⏳ Processing {action} request... (this may take a moment)")
+            
+            # Execute in background to not block Discord
+            asyncio.create_task(self._execute_long_task(action, query, message, status_msg))
         else:
             # Schedule for later
             try:
@@ -233,6 +217,38 @@ class AgentDaemon:
             except Exception as e:
                 logger.error(f"Error scheduling task: {e}")
                 await message.reply(f"❌ Error scheduling: {str(e)}")
+    
+    async def _execute_long_task(self, action: str, query: str, original_message, status_message):
+        """Execute long-running task and update status message with results."""
+        try:
+            if action == 'search':
+                results = await self.search_tool.search(query)
+                await self.rag.add_search_results(results)
+                
+                # Prepare result message
+                result_text = f"✅ **Search Complete for '{query}'**\n\n"
+                result_text += f"Found {len(results)} articles and added to RAG.\n\n"
+                result_text += "**Top Results:**\n"
+                for i, r in enumerate(results[:5], 1):
+                    result_text += f"{i}. **{r.get('title', 'Unknown')}**\n"
+                    result_text += f"   {r.get('url', 'No URL')}\n\n"
+                
+                # Send result as reply to status message
+                await status_message.reply(result_text)
+                
+                # Also DM the user
+                await self._notify_user(str(original_message.author_id), f"✅ Search '{query}' complete! Found {len(results)} articles.")
+            
+            elif action == 'add_note':
+                success = await self.rag.add_document(query)
+                if success:
+                    await status_message.reply(f"✅ Note added to RAG system.\n\n**Content:** {query[:200]}...")
+                else:
+                    await status_message.reply("❌ Failed to add note to RAG system.")
+            
+        except Exception as e:
+            logger.error(f"Error executing long task: {e}")
+            await status_message.reply(f"❌ **Error:** {str(e)}\n\nPlease try again or check logs for details.")
     
     async def _execute_scheduled_task(
         self,
